@@ -22,6 +22,7 @@ This project implements 5 core Machine Learning algorithms, each with its own in
 
 ## Project Structure
 
+```
 ML Algorithm in Python GUI/
 ├── dataset.csv                      # Shared dataset for KNN, SVM, Decision Tree
 ├── generate_dataset.py              # Generates the above dataset (20,000 rows)
@@ -42,6 +43,7 @@ ML Algorithm in Python GUI/
 ├── venv/                            # Virtual environment (not tracked in git)
 ├── .gitignore
 └── README.md
+```
 
 ## Setup Instructions
 
