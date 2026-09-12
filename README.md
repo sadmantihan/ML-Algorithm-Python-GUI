@@ -23,24 +23,25 @@ This project implements 5 core Machine Learning algorithms, each with its own in
 ## Project Structure
 
 ML Algorithm in Python GUI/
-├── dataset.csv # Shared dataset for KNN, SVM, Decision Tree
-├── generate_dataset.py # Generates the above dataset (20,000 rows)
+├── dataset.csv                      # Shared dataset for KNN, SVM, Decision Tree
+├── generate_dataset.py              # Generates the above dataset (20,000 rows)
 ├── KNN/
-│ └── app.py
+│   └── app.py
 ├── SVM/
-│ └── app.py
+│   └── app.py
 ├── Decision Tree/
-│ └── app.py
+│   └── app.py
 ├── K-means-clustering/
-│ ├── app.py
-│ ├── generate_dataset.py # Generates unlabelled dataset
-│ └── dataset_unlabelled.csv
+│   ├── app.py
+│   ├── generate_dataset.py          # Generates unlabelled dataset
+│   └── dataset_unlabelled.csv
 ├── Fruit Classification/
-│ ├── app.py
-│ ├── generate_dataset.py
-│ └── dataset.csv
+│   ├── app.py
+│   ├── generate_dataset.py
+│   └── dataset.csv
+├── venv/                            # Virtual environment (not tracked in git)
+├── .gitignore
 └── README.md
-
 
 ## Setup Instructions
 
