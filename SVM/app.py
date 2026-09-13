@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,6 +6,9 @@ from matplotlib.colors import ListedColormap
 import streamlit as st
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, accuracy_score
 
 st.set_page_config(page_title="SVM", layout="centered")
 st.title("SVM Classifier: Obese vs Fit")
@@ -19,7 +23,9 @@ CATEGORY_ORDER = ["Fit", "Obese"]
 # ---------- 1. Load dataset ----------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("dataset.csv")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, "..", "dataset.csv")
+    df = pd.read_csv(csv_path)
     return df
 
 df = load_data()
@@ -27,6 +33,9 @@ df = load_data()
 with st.expander("View dataset (first 10 rows)"):
     st.dataframe(df.head(10))
 st.caption(f"Total rows in dataset: {len(df):,}")
+
+X_full = df[["Height", "Weight"]].to_numpy(dtype=float)
+y_full = df["Label"].astype(str).to_numpy()
 
 # ---------- 2. Sidebar controls ----------
 st.sidebar.header("Model Settings")
@@ -37,8 +46,11 @@ if kernel in ("rbf", "poly", "sigmoid"):
 else:
     gamma_option = "scale"
 
-# Speed note: SVM training is O(n^2)-O(n^3), so 20,000 rows is too slow to train live.
-# Use a stratified sample for training the demo model.
+test_size = st.sidebar.slider("Test set size", min_value=0.1, max_value=0.4, value=0.2, step=0.05,
+                                help="Fraction of the data held out for testing (never seen during training).")
+
+# Speed note: SVM training is O(n^2)-O(n^3), so training on the full set is too slow live.
+# Use a stratified sample from the training split for actual training.
 train_size = st.sidebar.slider("Training sample size", min_value=200, max_value=3000, value=1000, step=100,
                                  help="SVM is slow on large datasets — a sample keeps the demo responsive.")
 
@@ -47,29 +59,47 @@ input_height = st.sidebar.number_input("Height (cm)", min_value=100.0, max_value
 input_weight = st.sidebar.number_input("Weight (kg)", min_value=20.0, max_value=180.0, value=70.0)
 classify_btn = st.sidebar.button("Classify")
 
-# ---------- 3. Sample + train model ----------
+# ---------- 3. Split, sample, scale, train ----------
 @st.cache_resource
-def train_model(kernel, C_value, gamma_option, train_size, seed=42):
+def train_model(kernel, C_value, gamma_option, train_size, test_size, seed=42):
+    # First, a genuine train/test split — the test portion is never used for training.
+    X_train_full, X_test, y_train_full, y_test = train_test_split(
+        X_full, y_full, test_size=test_size, random_state=seed, stratify=y_full
+    )
+
+    # From the training portion, draw a stratified sample for speed.
     per_class = train_size // 2
+    train_df = pd.DataFrame(X_train_full, columns=["Height", "Weight"])
+    train_df["Label"] = y_train_full
+
     sample_parts = []
     for label in CATEGORY_ORDER:
-        group = df[df["Label"] == label]
+        group = train_df[train_df["Label"] == label]
         n = min(len(group), per_class)
         sample_parts.append(group.sample(n, random_state=seed))
     sample_df = pd.concat(sample_parts, ignore_index=True)
 
-    X_train = sample_df[["Height", "Weight"]].values
-    y_train = sample_df["Label"].values
+    X_train = sample_df[["Height", "Weight"]].to_numpy(dtype=float)
+    y_train = sample_df["Label"].astype(str).to_numpy()
+
+    # Cap test set size for plotting/evaluation speed (still a genuinely held-out set)
+    if len(X_test) > 3000:
+        idx = np.random.default_rng(seed).choice(len(X_test), 3000, replace=False)
+        X_test = X_test[idx]
+        y_test = y_test[idx]
 
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
     model = SVC(kernel=kernel, C=C_value, gamma=gamma_option, probability=True)
     model.fit(X_train_scaled, y_train)
 
-    return model, scaler, X_train, y_train
+    return model, scaler, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled
 
-model, scaler, X_train, y_train = train_model(kernel, C_value, gamma_option, train_size)
+model, scaler, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled = train_model(
+    kernel, C_value, gamma_option, train_size, test_size
+)
 
 # ---------- 4. Decision boundary plot ----------
 def plot_decision_boundary(model, scaler, X_train, y_train, new_point=None):
@@ -108,7 +138,40 @@ def plot_decision_boundary(model, scaler, X_train, y_train, new_point=None):
     ax.legend(loc="upper left", fontsize=8)
     return fig
 
-# ---------- 5. Display ----------
+# ---------- 5. Model evaluation: train vs test accuracy + confusion matrix ----------
+st.subheader("Model Evaluation")
+
+train_pred = model.predict(X_train_scaled)
+test_pred = model.predict(X_test_scaled)
+
+train_acc = accuracy_score(y_train, train_pred)
+test_acc = accuracy_score(y_test, test_pred)
+
+col1, col2 = st.columns(2)
+col1.metric("Training Accuracy", f"{train_acc*100:.1f}%", help=f"Evaluated on {len(X_train):,} training samples")
+col2.metric("Test Accuracy", f"{test_acc*100:.1f}%", help=f"Evaluated on {len(X_test):,} unseen test samples")
+
+if abs(train_acc - test_acc) > 0.05:
+    st.warning("Training and test accuracy differ by more than 5% — this can indicate overfitting.")
+
+st.write("**Confusion Matrix (on the held-out test set):**")
+cm = confusion_matrix(y_test, test_pred, labels=CATEGORY_ORDER)
+
+fig_cm, ax_cm = plt.subplots(figsize=(5, 4.5))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=CATEGORY_ORDER)
+disp.plot(ax=ax_cm, cmap="Blues", colorbar=False, values_format="d")
+ax_cm.set_title("Confusion Matrix")
+st.pyplot(fig_cm)
+
+tp, fn, fp, tn = cm[0, 0], cm[0, 1], cm[1, 0], cm[1, 1]
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("True Positive (Fit→Fit)", tp)
+col2.metric("False Negative (Fit→Obese)", fn)
+col3.metric("False Positive (Obese→Fit)", fp)
+col4.metric("True Negative (Obese→Obese)", tn)
+
+# ---------- 6. Display: prediction + plot ----------
 if classify_btn:
     input_row = [[input_height, input_weight]]
     input_scaled = scaler.transform(input_row)
@@ -135,8 +198,3 @@ else:
     fig = plot_decision_boundary(model, scaler, X_train, y_train)
     if fig:
         st.pyplot(fig)
-
-# ---------- 6. Model accuracy on training sample (for the report) ----------
-X_train_scaled = scaler.transform(X_train)
-train_accuracy = model.score(X_train_scaled, y_train)
-st.sidebar.metric("Training Accuracy (on sample)", f"{train_accuracy*100:.1f}%")

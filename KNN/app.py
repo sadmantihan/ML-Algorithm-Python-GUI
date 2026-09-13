@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, accuracy_score
 
@@ -122,12 +123,12 @@ if abs(train_acc - test_acc) > 0.05:
 
 st.write("**Confusion Matrix (on the held-out test set):**")
 cm = confusion_matrix(y_test, test_pred, labels=CATEGORY_ORDER)
-cm_df = pd.DataFrame(
-    cm,
-    index=[f"Actual {l}" for l in CATEGORY_ORDER],
-    columns=[f"Predicted {l}" for l in CATEGORY_ORDER]
-)
-st.dataframe(cm_df)
+
+fig_cm, ax_cm = plt.subplots(figsize=(5, 4.5))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=CATEGORY_ORDER)
+disp.plot(ax=ax_cm, cmap="Blues", colorbar=False, values_format="d")
+ax_cm.set_title("Confusion Matrix")
+st.pyplot(fig_cm)
 
 tn, fp, fn, tp = cm[1, 1], cm[1, 0], cm[0, 1], cm[0, 0]
 # Note: CATEGORY_ORDER = ["Fit", "Obese"], so index 0 = Fit (treated as "positive" here), index 1 = Obese
