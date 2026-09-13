@@ -4,11 +4,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
-st.set_page_config(page_title="Perceptron - Apple vs Orange", layout="centered")
-st.title("Perceptron Classifier: Apple vs Orange")
-st.write("Based on Hagan, Chapter 4. Classifies a fruit as **Apple** or **Orange** using Shape, Texture, and Weight (each encoded as +1 / -1).")
+st.set_page_config(page_title="Perceptron - Fruit Classification", layout="centered")
+st.title("Perceptron Classifier: Fruit Recognition")
+st.write("Based on Hagan, Chapter 4. Classifies a fruit as **Watermelon**, **Banana**, **Orange**, or **Apple** "
+         "using Shape, Texture, and Weight (each encoded as +1 / -1).")
 
-LABEL_MAP = {1: "Apple", -1: "Orange"}
+FRUIT_NAMES = ["Watermelon", "Banana", "Orange", "Apple"]
 
 # ---------- 1. Load dataset ----------
 @st.cache_data
@@ -23,15 +24,17 @@ df = load_data()
 with st.expander("View dataset (first 10 rows)"):
     st.dataframe(df.head(10))
 st.caption(f"Total rows in dataset: {len(df):,}")
+st.write("Class distribution:")
+st.bar_chart(df["label"].value_counts())
 
 X = df[["shape", "texture", "weight"]].values.astype(float)
-y = df["label"].values.astype(float)
+y_raw = df["label"].values
 
 # ---------- 2. Sidebar: training settings ----------
 st.sidebar.header("Perceptron Settings")
 learning_rate = st.sidebar.slider("Learning Rate", min_value=0.01, max_value=1.0, value=1.0, step=0.01)
 max_epochs = st.sidebar.slider("Max Epochs", min_value=1, max_value=100, value=20)
-train_btn = st.sidebar.button("Train Perceptron")
+train_btn = st.sidebar.button("Train Perceptrons")
 
 # ---------- 3. Perceptron learning rule (Hagan-style) ----------
 def hardlim(x):
@@ -60,44 +63,67 @@ def train_perceptron(X, y, learning_rate, max_epochs):
 
     return w, b, errors_per_epoch
 
-# ---------- 4. Train (cached so it doesn't retrain on every widget interaction) ----------
+# ---------- 4. Train one-vs-rest: one perceptron per fruit ----------
 @st.cache_resource
-def get_trained_model(learning_rate, max_epochs):
-    w, b, errors_per_epoch = train_perceptron(X, y, learning_rate, max_epochs)
-    return w, b, errors_per_epoch
+def train_all_perceptrons(learning_rate, max_epochs):
+    models = {}
+    for fruit in FRUIT_NAMES:
+        y_binary = np.where(y_raw == fruit, 1, -1).astype(float)
+        w, b, errors_per_epoch = train_perceptron(X, y_binary, learning_rate, max_epochs)
+        models[fruit] = {"w": w, "b": b, "errors_per_epoch": errors_per_epoch}
+    return models
 
-w, b, errors_per_epoch = get_trained_model(learning_rate, max_epochs)
+models = train_all_perceptrons(learning_rate, max_epochs)
 
-# ---------- 5. Show training results ----------
-st.subheader("Training Result")
-col1, col2, col3 = st.columns(3)
-col1.metric("Weight (Shape)", f"{w[0]:.2f}")
-col2.metric("Weight (Texture)", f"{w[1]:.2f}")
-col3.metric("Weight (Weight)", f"{w[2]:.2f}")
-st.metric("Bias", f"{b:.2f}")
+# ---------- 5. Show training results per fruit ----------
+st.subheader("Training Results (One Perceptron per Fruit)")
 
-converged = errors_per_epoch[-1] == 0
-epochs_used = len(errors_per_epoch)
-if converged:
-    st.success(f"Converged after {epochs_used} epoch(s) — no misclassifications on training data.")
-else:
-    st.warning(f"Did not fully converge within {epochs_used} epoch(s) — "
-               f"{errors_per_epoch[-1]} misclassification(s) remain. Try increasing Max Epochs.")
+for fruit in FRUIT_NAMES:
+    m = models[fruit]
+    converged = m["errors_per_epoch"][-1] == 0
+    epochs_used = len(m["errors_per_epoch"])
 
-# Training accuracy
-predictions = np.array([hardlim(np.dot(w, X[i]) + b) for i in range(len(X))])
-train_accuracy = np.mean(predictions == y)
-st.metric("Training Accuracy", f"{train_accuracy*100:.1f}%")
+    with st.expander(f"{fruit} perceptron"):
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Weight (Shape)", f"{m['w'][0]:.2f}")
+        col2.metric("Weight (Texture)", f"{m['w'][1]:.2f}")
+        col3.metric("Weight (Weight)", f"{m['w'][2]:.2f}")
+        st.metric("Bias", f"{m['b']:.2f}")
 
-# ---------- 6. Convergence plot ----------
-st.subheader("Convergence: Errors per Epoch")
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(range(1, len(errors_per_epoch) + 1), errors_per_epoch, marker="o", color="#ef4444")
-ax.set_xlabel("Epoch")
-ax.set_ylabel("Number of Misclassifications")
-ax.set_title("Perceptron Learning Curve")
-ax.grid(True, alpha=0.3)
-st.pyplot(fig)
+        if converged:
+            st.success(f"Converged after {epochs_used} epoch(s).")
+        else:
+            st.warning(f"Did not fully converge within {epochs_used} epoch(s) — "
+                       f"{m['errors_per_epoch'][-1]} misclassification(s) remain.")
+
+        fig, ax = plt.subplots(figsize=(6, 3))
+        ax.plot(range(1, len(m["errors_per_epoch"]) + 1), m["errors_per_epoch"], marker="o", color="#ef4444")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Misclassifications")
+        ax.set_title(f"{fruit} vs. Rest — Learning Curve")
+        ax.grid(True, alpha=0.3)
+        st.pyplot(fig)
+
+# ---------- 6. Overall multi-class accuracy on training data ----------
+def predict_fruit(x, models):
+    # Compute net input (score) for each fruit's perceptron, pick the highest
+    scores = {}
+    for fruit in FRUIT_NAMES:
+        m = models[fruit]
+        scores[fruit] = np.dot(m["w"], x) + m["b"]
+    best_fruit = max(scores, key=scores.get)
+    return best_fruit, scores
+
+predictions = []
+for i in range(len(X)):
+    pred_fruit, _ = predict_fruit(X[i], models)
+    predictions.append(pred_fruit)
+
+overall_accuracy = np.mean(np.array(predictions) == y_raw)
+st.subheader("Overall Multi-Class Training Accuracy")
+st.metric("Accuracy (all 4 fruits combined)", f"{overall_accuracy*100:.1f}%")
+st.caption("When multiple perceptrons output +1 for the same input, the fruit with the highest net input "
+           "(w·p + b) is chosen as the final prediction.")
 
 # ---------- 7. Classify a new fruit ----------
 st.sidebar.header("Classify a New Fruit")
@@ -112,22 +138,22 @@ weight_val = 1 if "Heavy" in weight_input else -1
 
 if classify_btn:
     p = np.array([shape_val, texture_val, weight_val], dtype=float)
-    net_input = np.dot(w, p) + b
-    prediction = hardlim(net_input)
-    predicted_fruit = LABEL_MAP[prediction]
+    predicted_fruit, scores = predict_fruit(p, models)
 
     st.subheader("Classification Result")
-    if predicted_fruit == "Apple":
-        st.success(f"Predicted fruit: **{predicted_fruit}**")
-    else:
-        st.error(f"Predicted fruit: **{predicted_fruit}**")
+    st.success(f"Predicted fruit: **{predicted_fruit}**")
 
-    st.write(f"Net input (w·p + b): **{net_input:.2f}**")
+    st.write("Net input (w·p + b) from each fruit's perceptron:")
+    scores_df = pd.Series(scores).sort_values(ascending=False)
+    st.bar_chart(scores_df)
+
     st.write(f"Inputs used: Shape={shape_val}, Texture={texture_val}, Weight={weight_val}")
 
-# ---------- 8. Show final learned decision rule ----------
-st.subheader("Learned Decision Function")
-st.latex(
-    f"a = \\text{{hardlim}}({w[0]:.2f} \\cdot \\text{{shape}} + {w[1]:.2f} \\cdot \\text{{texture}} + "
-    f"{w[2]:.2f} \\cdot \\text{{weight}} + ({b:.2f}))"
-)
+# ---------- 8. Show learned decision functions ----------
+st.subheader("Learned Decision Functions")
+for fruit in FRUIT_NAMES:
+    m = models[fruit]
+    st.latex(
+        f"a_{{\\text{{{fruit}}}}} = {m['w'][0]:.2f} \\cdot \\text{{shape}} + "
+        f"{m['w'][1]:.2f} \\cdot \\text{{texture}} + {m['w'][2]:.2f} \\cdot \\text{{weight}} + ({m['b']:.2f})"
+    )
