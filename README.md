@@ -2,7 +2,7 @@
 
 This project implements 5 core Machine Learning algorithms, each with its own interactive GUI built using **Streamlit** — no terminal input/output required. All experiments use a synthetic Height/Weight dataset to classify a person as **Fit** or **Obese** (except the Perceptron experiment, which classifies fruit into 4 categories based on Hagan Chapter 4).
 
-## Experiments Included
+## Experiments
 
 | # | Algorithm | Folder | Task |
 |---|-----------|--------|------|
