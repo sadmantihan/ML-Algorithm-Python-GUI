@@ -2,7 +2,7 @@
 
 This project implements 5 core Machine Learning algorithms, each with its own interactive GUI built using **Streamlit** — no terminal input/output required. All experiments use a synthetic Height/Weight dataset to classify a person as **Fit** or **Obese** (except the Perceptron experiment, which classifies fruit into 4 categories based on Hagan Chapter 4).
 
-## Experiments
+## Experiments Included
 
 | # | Algorithm | Folder | Task |
 |---|-----------|--------|------|
@@ -44,6 +44,7 @@ ML Algorithm in Python GUI/
 ├── .gitignore
 └── README.md
 ```
+
 
 
 ## Setup Instructions
@@ -108,13 +109,23 @@ Each command opens a new browser tab with that experiment's GUI. You can stop a 
 
 ## What Each Experiment Demonstrates
 
-- **KNN** — classifies a new point by majority vote of its `k` nearest neighbors. Try changing `k` in the sidebar to see the decision boundary change.
-- **SVM** — finds the best separating boundary (hyperplane) between classes. Try switching kernels (`linear` vs `rbf`) to see different boundary shapes.
-- **Decision Tree** — learns a set of if/else rules to split the data. The app shows the actual tree diagram and feature importance.
-- **K-Means Clustering** — unsupervised learning; groups similar points together without ever seeing the true Fit/Obese labels. Includes an Elbow Method plot to help pick the number of clusters, and a comparison table showing how well the discovered clusters align with the true labels.
-- **Perceptron** — the classic single-layer neural network from Hagan's textbook (Chapter 4), trained with the perceptron learning rule (`w ← w + α·e·p`). Classifies a fruit as **Watermelon**, **Banana**, **Orange**, or **Apple** using Shape, Texture, and Weight (encoded as +1/-1). Since the classic perceptron only handles 2 classes, this experiment trains 4 separate perceptrons in a **one-vs-rest** setup — one per fruit — and picks the fruit whose perceptron is most confident.
+- **KNN** — classifies a new point by majority vote of its `k` nearest neighbors. Uses a genuine train/test split (adjustable via sidebar slider) and standardized features, so distance calculations aren't skewed by Height's larger numeric range. Reports training vs. test accuracy and a visual confusion matrix on the held-out test set.
+- **SVM** — finds the best separating boundary (hyperplane) between classes. Try switching kernels (`linear` vs `rbf`) to see different boundary shapes. Uses a proper train/test split, with a stratified training sample drawn only from the training portion (for speed) while the test set stays untouched. Reports training vs. test accuracy and a visual confusion matrix.
+- **Decision Tree** — learns a set of if/else rules to split the data. The app shows the actual tree diagram, feature importance, a train/test split with an overfitting warning if train/test accuracy diverge, and a visual confusion matrix. Unlike KNN and SVM, no feature scaling is needed since the tree only compares raw threshold values.
+- **K-Means Clustering** — unsupervised learning; groups similar points together without ever seeing the true Fit/Obese labels. Includes an Elbow Method plot to help pick the number of clusters, and a comparison table showing how well the discovered clusters align with the true labels (used only for validation after training, not for the clustering itself — hence no train/test split or confusion matrix here, unlike the supervised experiments).
+- **Perceptron** — the classic single-layer neural network from Hagan's textbook (Chapter 4), trained with the perceptron learning rule (`w ← w + α·e·p`). Classifies a fruit as **Watermelon**, **Banana**, **Orange**, or **Apple** using Shape, Texture, and Weight (encoded as +1/-1). Since the classic perceptron only handles 2 classes, this experiment trains 4 separate perceptrons in a **one-vs-rest** setup — one per fruit — and picks the fruit whose perceptron is most confident. Weight and bias values are tracked and plotted after every epoch, so the learning process itself (not just the final result) can be visualized.
+
+## Evaluation Approach
+
+The three supervised classification experiments (KNN, SVM, Decision Tree) all follow the same evaluation pattern:
+- A genuine **train/test split** (adjustable test set size, default 80/20), so accuracy is measured on data the model never saw during training.
+- A **confusion matrix**, shown as a labelled heatmap diagram, along with the individual True Positive / False Negative / False Positive / True Negative counts.
+- Training vs. test accuracy comparison, with an overfitting warning where relevant.
+
+K-Means Clustering, being unsupervised, does not use a train/test split or confusion matrix — instead, its discovered clusters are compared against the true labels only after training, purely to validate that the clustering found meaningful structure.
 
 ## Notes
 
 - The `venv/` folder is excluded from this repo via `.gitignore` — always create your own using the setup steps above.
 - All datasets are synthetically generated (not real-world data) for demonstration purposes.
+- This project was built using **pandas 3.0**, which stores text columns using an internal PyArrow-backed format by default. This caused a `TypeError` inside scikit-learn's array indexing (e.g., in `train_test_split`). The fix applied throughout this project is to explicitly convert feature/label columns to plain NumPy arrays after loading (`.to_numpy(dtype=float)` / `.astype(str).to_numpy()`).
