@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, accuracy_score
 
-st.set_page_config(page_title="KNN - Obese vs Fit", layout="centered")
+st.set_page_config(page_title="KNN", layout="centered")
 st.title("KNN Classifier: Obese vs Fit")
 st.write("Classify a person as **Fit** or **Obese** based on Height (cm) and Weight (kg).")
 
