@@ -1,6 +1,6 @@
 # Machine Learning Lab – 5 Algorithms with GUI (Streamlit)
 
-This project implements 5 core Machine Learning algorithms, each with its own interactive GUI built using **Streamlit** — no terminal input/output required. All experiments use a synthetic Height/Weight dataset to classify a person as **Fit** or **Obese** (except the Perceptron experiment, which classifies **Apple vs Orange** based on Hagan Chapter 4).
+This project implements 5 core Machine Learning algorithms, each with its own interactive GUI built using **Streamlit** — no terminal input/output required. All experiments use a synthetic Height/Weight dataset to classify a person as **Fit** or **Obese** (except the Perceptron experiment, which classifies fruit into 4 categories based on Hagan Chapter 4).
 
 ## Experiments Included
 
@@ -10,7 +10,7 @@ This project implements 5 core Machine Learning algorithms, each with its own in
 | 2 | Support Vector Machine (SVM) | `SVM/` | Fit vs Obese classification |
 | 3 | Decision Tree | `Decision Tree/` | Fit vs Obese classification |
 | 4 | K-Means Clustering | `K-means-clustering/` | Unsupervised clustering on Height/Weight |
-| 5 | Perceptron (Hagan Ch. 4) | `Fruit Classification/` | Apple vs Orange classification |
+| 5 | Perceptron (Hagan Ch. 4) | `Fruit Classification/` | 4-class fruit classification: Watermelon, Banana, Orange, Apple |
 
 ## Tech Stack
 
@@ -44,6 +44,7 @@ ML Algorithm in Python GUI/
 ├── .gitignore
 └── README.md
 ```
+
 
 ## Setup Instructions
 
@@ -111,7 +112,7 @@ Each command opens a new browser tab with that experiment's GUI. You can stop a 
 - **SVM** — finds the best separating boundary (hyperplane) between classes. Try switching kernels (`linear` vs `rbf`) to see different boundary shapes.
 - **Decision Tree** — learns a set of if/else rules to split the data. The app shows the actual tree diagram and feature importance.
 - **K-Means Clustering** — unsupervised learning; groups similar points together without ever seeing the true Fit/Obese labels. Includes an Elbow Method plot to help pick the number of clusters, and a comparison table showing how well the discovered clusters align with the true labels.
-- **Perceptron** — the classic single-layer neural network from Hagan's textbook (Chapter 4), trained with the perceptron learning rule (`w ← w + α·e·p`). Classifies fruit as Apple or Orange using Shape, Texture, and Weight (encoded as +1/-1).
+- **Perceptron** — the classic single-layer neural network from Hagan's textbook (Chapter 4), trained with the perceptron learning rule (`w ← w + α·e·p`). Classifies a fruit as **Watermelon**, **Banana**, **Orange**, or **Apple** using Shape, Texture, and Weight (encoded as +1/-1). Since the classic perceptron only handles 2 classes, this experiment trains 4 separate perceptrons in a **one-vs-rest** setup — one per fruit — and picks the fruit whose perceptron is most confident.
 
 ## Notes
 
