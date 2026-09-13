@@ -38,7 +38,7 @@ classify_btn = st.sidebar.button("Assign to Cluster")
 
 # ---------- 3. Prepare features + scale ----------
 feature_cols = ["Height", "Weight"]
-X = df[feature_cols].values
+X = df[feature_cols].to_numpy(dtype=float)
 
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
