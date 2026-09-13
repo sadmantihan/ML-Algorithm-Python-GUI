@@ -1,26 +1,40 @@
 import numpy as np
 import pandas as pd
 
+# Prototype vectors: (shape, texture, weight)
+FRUIT_PROTOTYPES = {
+    "Watermelon": (1, -1, 1),
+    "Banana": (-1, 1, -1),
+    "Orange": (1, -1, -1),
+    "Apple": (1, 1, -1),
+}
+
 def generate_data(n_samples=20000, seed=42, noise_prob=0.08):
     rng = np.random.default_rng(seed)
 
-    shape = rng.choice([1, -1], size=n_samples, p=[0.85, 0.15])     # mostly round (Apple-like)
-    texture = rng.choice([1, -1], size=n_samples, p=[0.85, 0.15])   # mostly smooth
-    weight = rng.choice([1, -1], size=n_samples, p=[0.5, 0.5])      # heavy vs light, balanced
+    fruit_names = list(FRUIT_PROTOTYPES.keys())
+    labels = rng.choice(fruit_names, size=n_samples)  # equal probability per fruit
 
-    # Weighted score: Weight dominates, Shape/Texture contribute a little
-    score = 0.6 * weight + 0.25 * shape + 0.15 * texture
-    label = np.where(score >= 0, 1, -1)
+    shape = np.zeros(n_samples, dtype=int)
+    texture = np.zeros(n_samples, dtype=int)
+    weight = np.zeros(n_samples, dtype=int)
 
-    # Add some real-world noise (random label flips), matching the imperfect pattern in the demo data
-    flip_mask = rng.random(n_samples) < noise_prob
-    label[flip_mask] = -label[flip_mask]
+    for i in range(n_samples):
+        s, t, w = FRUIT_PROTOTYPES[labels[i]]
+        shape[i] = s
+        texture[i] = t
+        weight[i] = w
+
+    # Add noise: randomly flip each feature with probability noise_prob
+    for arr in (shape, texture, weight):
+        flip_mask = rng.random(n_samples) < noise_prob
+        arr[flip_mask] = -arr[flip_mask]
 
     df = pd.DataFrame({
         "shape": shape,
         "texture": texture,
         "weight": weight,
-        "label": label
+        "label": labels
     })
     return df
 
@@ -28,5 +42,5 @@ if __name__ == "__main__":
     df = generate_data()
     df.to_csv("dataset.csv", index=False)
     print(f"dataset.csv created with {len(df)} rows.")
-    print(df["label"].value_counts().rename({1: "Apple", -1: "Orange"}))
+    print(df["label"].value_counts())
     print(df.head(10))
