@@ -10,6 +10,7 @@ st.write("Based on Hagan, Chapter 4. Classifies a fruit as **Watermelon**, **Ban
          "using Shape, Texture, and Weight (each encoded as +1 / -1).")
 
 FRUIT_NAMES = ["Watermelon", "Banana", "Orange", "Apple"]
+FEATURE_NAMES = ["Shape", "Texture", "Weight"]
 
 # ---------- 1. Load dataset ----------
 @st.cache_data
@@ -27,8 +28,8 @@ st.caption(f"Total rows in dataset: {len(df):,}")
 st.write("Class distribution:")
 st.bar_chart(df["label"].value_counts())
 
-X = df[["shape", "texture", "weight"]].values.astype(float)
-y_raw = df["label"].values
+X = df[["shape", "texture", "weight"]].to_numpy(dtype=float)
+y_raw = df["label"].astype(str).to_numpy()
 
 # ---------- 2. Sidebar: training settings ----------
 st.sidebar.header("Perceptron Settings")
@@ -36,7 +37,7 @@ learning_rate = st.sidebar.slider("Learning Rate", min_value=0.01, max_value=1.0
 max_epochs = st.sidebar.slider("Max Epochs", min_value=1, max_value=100, value=20)
 train_btn = st.sidebar.button("Train Perceptrons")
 
-# ---------- 3. Perceptron learning rule (Hagan-style) ----------
+# ---------- 3. Perceptron learning rule (Hagan-style), with weight/bias history ----------
 def hardlim(x):
     return 1 if x >= 0 else -1
 
@@ -45,6 +46,10 @@ def train_perceptron(X, y, learning_rate, max_epochs):
     w = np.zeros(n_features)
     b = 0.0
     errors_per_epoch = []
+
+    # Record the weights and bias at the END of every epoch (starting with the initial values)
+    w_history = [w.copy()]
+    b_history = [b]
 
     for epoch in range(max_epochs):
         total_errors = 0
@@ -58,10 +63,12 @@ def train_perceptron(X, y, learning_rate, max_epochs):
                 b = b + learning_rate * e
                 total_errors += 1
         errors_per_epoch.append(total_errors)
+        w_history.append(w.copy())
+        b_history.append(b)
         if total_errors == 0:
             break
 
-    return w, b, errors_per_epoch
+    return w, b, errors_per_epoch, np.array(w_history), np.array(b_history)
 
 # ---------- 4. Train one-vs-rest: one perceptron per fruit ----------
 @st.cache_resource
@@ -69,8 +76,13 @@ def train_all_perceptrons(learning_rate, max_epochs):
     models = {}
     for fruit in FRUIT_NAMES:
         y_binary = np.where(y_raw == fruit, 1, -1).astype(float)
-        w, b, errors_per_epoch = train_perceptron(X, y_binary, learning_rate, max_epochs)
-        models[fruit] = {"w": w, "b": b, "errors_per_epoch": errors_per_epoch}
+        w, b, errors_per_epoch, w_history, b_history = train_perceptron(X, y_binary, learning_rate, max_epochs)
+        models[fruit] = {
+            "w": w, "b": b,
+            "errors_per_epoch": errors_per_epoch,
+            "w_history": w_history,
+            "b_history": b_history
+        }
     return models
 
 models = train_all_perceptrons(learning_rate, max_epochs)
@@ -85,10 +97,10 @@ for fruit in FRUIT_NAMES:
 
     with st.expander(f"{fruit} perceptron"):
         col1, col2, col3 = st.columns(3)
-        col1.metric("Weight (Shape)", f"{m['w'][0]:.2f}")
-        col2.metric("Weight (Texture)", f"{m['w'][1]:.2f}")
-        col3.metric("Weight (Weight)", f"{m['w'][2]:.2f}")
-        st.metric("Bias", f"{m['b']:.2f}")
+        col1.metric("Final Weight (Shape)", f"{m['w'][0]:.2f}")
+        col2.metric("Final Weight (Texture)", f"{m['w'][1]:.2f}")
+        col3.metric("Final Weight (Weight)", f"{m['w'][2]:.2f}")
+        st.metric("Final Bias", f"{m['b']:.2f}")
 
         if converged:
             st.success(f"Converged after {epochs_used} epoch(s).")
@@ -96,6 +108,7 @@ for fruit in FRUIT_NAMES:
             st.warning(f"Did not fully converge within {epochs_used} epoch(s) — "
                        f"{m['errors_per_epoch'][-1]} misclassification(s) remain.")
 
+        # --- Errors per epoch ---
         fig, ax = plt.subplots(figsize=(6, 3))
         ax.plot(range(1, len(m["errors_per_epoch"]) + 1), m["errors_per_epoch"], marker="o", color="#ef4444")
         ax.set_xlabel("Epoch")
@@ -104,9 +117,30 @@ for fruit in FRUIT_NAMES:
         ax.grid(True, alpha=0.3)
         st.pyplot(fig)
 
+        # --- Weight and bias evolution over epochs ---
+        st.write("**How the weights and bias changed during training:**")
+        fig2, ax2 = plt.subplots(figsize=(6, 3))
+        epochs_axis = range(len(m["w_history"]))  # epoch 0 = initial values before training
+        for j, fname in enumerate(FEATURE_NAMES):
+            ax2.plot(epochs_axis, m["w_history"][:, j], marker="o", markersize=3, label=f"w ({fname})")
+        ax2.plot(epochs_axis, m["b_history"], marker="o", markersize=3, label="Bias (b)", linestyle="--", color="black")
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Value")
+        ax2.set_title(f"{fruit} vs. Rest — Weight & Bias Evolution")
+        ax2.legend(fontsize=8)
+        ax2.grid(True, alpha=0.3)
+        st.pyplot(fig2)
+
+        # --- Raw table of weight/bias per epoch (useful for the report) ---
+        history_df = pd.DataFrame(
+            m["w_history"], columns=[f"w_{fname}" for fname in FEATURE_NAMES]
+        )
+        history_df["bias"] = m["b_history"]
+        history_df.index.name = "Epoch"
+        st.dataframe(history_df)
+
 # ---------- 6. Overall multi-class accuracy on training data ----------
 def predict_fruit(x, models):
-    # Compute net input (score) for each fruit's perceptron, pick the highest
     scores = {}
     for fruit in FRUIT_NAMES:
         m = models[fruit]
