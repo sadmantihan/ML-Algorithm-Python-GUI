@@ -1,10 +1,14 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, accuracy_score
 
-st.set_page_config(page_title="KNN", layout="centered")
+st.set_page_config(page_title="KNN - Obese vs Fit", layout="centered")
 st.title("KNN Classifier: Obese vs Fit")
 st.write("Classify a person as **Fit** or **Obese** based on Height (cm) and Weight (kg).")
 
@@ -17,7 +21,9 @@ CATEGORY_ORDER = ["Fit", "Obese"]
 # ---------- 1. Load dataset ----------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("dataset.csv")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, "..", "dataset.csv")
+    df = pd.read_csv(csv_path)
     return df
 
 df = load_data()
@@ -26,31 +32,49 @@ with st.expander("View dataset (first 10 rows)"):
     st.dataframe(df.head(10))
 st.caption(f"Total rows in dataset: {len(df):,}")
 
-X = df[["Height", "Weight"]].values
-y = df["Label"].values
+X = df[["Height", "Weight"]].to_numpy(dtype=float)
+y = df["Label"].astype(str).to_numpy()
 
 # ---------- 2. Sidebar controls ----------
 st.sidebar.header("Model Settings")
 k = st.sidebar.slider("Number of neighbors (k)", min_value=1, max_value=15, value=5)
+test_size = st.sidebar.slider("Test set size", min_value=0.1, max_value=0.4, value=0.2, step=0.05,
+                                help="Fraction of the data held out for testing (never seen during training).")
 
 st.sidebar.header("Classify a New Person")
 input_height = st.sidebar.number_input("Height (cm)", min_value=100.0, max_value=220.0, value=170.0)
 input_weight = st.sidebar.number_input("Weight (kg)", min_value=20.0, max_value=180.0, value=70.0)
 classify_btn = st.sidebar.button("Classify")
 
-# ---------- 3. Train model ----------
-model = KNeighborsClassifier(n_neighbors=k)
-model.fit(X, y)
+# ---------- 3. Train/test split + scaling + train model ----------
+@st.cache_resource
+def train_model(k, test_size, seed=42):
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=seed, stratify=y
+    )
 
-# ---------- 4. Decision boundary plot ----------
-def plot_decision_boundary(model, X, y, new_point=None):
-    h_min, h_max = X[:, 0].min() - 5, X[:, 0].max() + 5
-    w_min, w_max = X[:, 1].min() - 5, X[:, 1].max() + 5
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    model = KNeighborsClassifier(n_neighbors=k)
+    model.fit(X_train_scaled, y_train)
+
+    return model, scaler, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled
+
+model, scaler, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled = train_model(k, test_size)
+
+# ---------- 4. Decision boundary plot (uses training data only, in original scale) ----------
+def plot_decision_boundary(model, scaler, X_train, y_train, new_point=None):
+    h_min, h_max = X_train[:, 0].min() - 5, X_train[:, 0].max() + 5
+    w_min, w_max = X_train[:, 1].min() - 5, X_train[:, 1].max() + 5
     xx, yy = np.meshgrid(
         np.linspace(h_min, h_max, 100),
         np.linspace(w_min, w_max, 100)
     )
-    grid_labels = model.predict(np.c_[xx.ravel(), yy.ravel()])
+    grid_raw = np.c_[xx.ravel(), yy.ravel()]
+    grid_scaled = scaler.transform(grid_raw)
+    grid_labels = model.predict(grid_scaled)
 
     label_to_num = {label: i for i, label in enumerate(CATEGORY_ORDER)}
     grid_nums = np.array([label_to_num[l] for l in grid_labels]).reshape(xx.shape)
@@ -63,11 +87,11 @@ def plot_decision_boundary(model, X, y, new_point=None):
 
     rng = np.random.default_rng(0)
     for label in CATEGORY_ORDER:
-        mask = y == label
+        mask = y_train == label
         idx = np.where(mask)[0]
         if len(idx) > 1000:
             idx = rng.choice(idx, 1000, replace=False)
-        ax.scatter(X[idx, 0], X[idx, 1], label=label, c=CATEGORY_COLORS[label],
+        ax.scatter(X_train[idx, 0], X_train[idx, 1], label=label, c=CATEGORY_COLORS[label],
                    edgecolor="k", s=15, alpha=0.5)
 
     if new_point is not None:
@@ -76,15 +100,51 @@ def plot_decision_boundary(model, X, y, new_point=None):
 
     ax.set_xlabel("Height (cm)")
     ax.set_ylabel("Weight (kg)")
-    ax.set_title(f"KNN Decision Boundary (k={k})")
+    ax.set_title(f"KNN Decision Boundary (k={k}, trained on {len(X_train):,} samples)")
     ax.legend(loc="upper left", fontsize=8)
     return fig
 
-# ---------- 5. Display ----------
+# ---------- 5. Model evaluation: train vs test accuracy + confusion matrix ----------
+st.subheader("Model Evaluation")
+
+train_pred = model.predict(X_train_scaled)
+test_pred = model.predict(X_test_scaled)
+
+train_acc = accuracy_score(y_train, train_pred)
+test_acc = accuracy_score(y_test, test_pred)
+
+col1, col2 = st.columns(2)
+col1.metric("Training Accuracy", f"{train_acc*100:.1f}%", help=f"Evaluated on {len(X_train):,} training samples")
+col2.metric("Test Accuracy", f"{test_acc*100:.1f}%", help=f"Evaluated on {len(X_test):,} unseen test samples")
+
+if abs(train_acc - test_acc) > 0.05:
+    st.warning("Training and test accuracy differ by more than 5% — this can indicate overfitting.")
+
+st.write("**Confusion Matrix (on the held-out test set):**")
+cm = confusion_matrix(y_test, test_pred, labels=CATEGORY_ORDER)
+cm_df = pd.DataFrame(
+    cm,
+    index=[f"Actual {l}" for l in CATEGORY_ORDER],
+    columns=[f"Predicted {l}" for l in CATEGORY_ORDER]
+)
+st.dataframe(cm_df)
+
+tn, fp, fn, tp = cm[1, 1], cm[1, 0], cm[0, 1], cm[0, 0]
+# Note: CATEGORY_ORDER = ["Fit", "Obese"], so index 0 = Fit (treated as "positive" here), index 1 = Obese
+tp, fn, fp, tn = cm[0, 0], cm[0, 1], cm[1, 0], cm[1, 1]
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("True Positive (Fit→Fit)", tp)
+col2.metric("False Negative (Fit→Obese)", fn)
+col3.metric("False Positive (Obese→Fit)", fp)
+col4.metric("True Negative (Obese→Obese)", tn)
+
+# ---------- 6. Display: prediction + plot ----------
 if classify_btn:
     input_row = [[input_height, input_weight]]
-    prediction = model.predict(input_row)[0]
-    proba = model.predict_proba(input_row)[0]
+    input_scaled = scaler.transform(input_row)
+    prediction = model.predict(input_scaled)[0]
+    proba = model.predict_proba(input_scaled)[0]
     classes = model.classes_
 
     bmi_value = input_weight / ((input_height / 100) ** 2)
@@ -99,12 +159,8 @@ if classify_btn:
     st.write("Class probabilities:")
     st.bar_chart(pd.Series(proba, index=classes))
 
-    fig = plot_decision_boundary(model, X, y, new_point=(input_height, input_weight))
+    fig = plot_decision_boundary(model, scaler, X_train, y_train, new_point=(input_height, input_weight))
     st.pyplot(fig)
 else:
-    fig = plot_decision_boundary(model, X, y)
+    fig = plot_decision_boundary(model, scaler, X_train, y_train)
     st.pyplot(fig)
-
-# ---------- 6. Model accuracy on training data (for the report) ----------
-train_accuracy = model.score(X, y)
-st.sidebar.metric("Training Accuracy", f"{train_accuracy*100:.1f}%")
